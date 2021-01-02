@@ -25,7 +25,7 @@ COPY primary-component.sql   		/
 
 # Fix permissions
 RUN chown -R mysql:mysql /etc/mysql && chmod -R go-w /etc/mysql
-RUN mkdir /var/run/mysqld && chown -R mysql:mysql /var/run/mysqld && chmod -R go-w /var/run/mysqld
+RUN mkdir chown -R mysql:mysql /var/run/mysqld && chmod -R go-w /var/run/mysqld
 
 EXPOSE 3306 4444 4567 4567/udp 4568 8080 8081
 
