@@ -1,21 +1,9 @@
 # MariaDb Galera Cluster
 
-## This is a fork for ARM64 images with working builds and images att docker hub
-This is work to make this work on ubuntu server 20 version with arm64 and i am currently running this on my raspberry pi cluster with 7 nodes.
-
-
-This Docker container is based on the official Docker [mariadb](https://hub.docker.com/_/mariadb/) image and is designed to be
-compatible with auto-scheduling systems, specifically Kubernetes, Docker Swarm Mode and Kontena Classic.
-It could also work with manual scheduling (`docker run`) by specifying the correct
+This Docker container is based on the official Docker `mariadb:10.1` image and is designed to be
+compatible with auto-scheduling systems, specifically Docker Swarm Mode (1.12+) and Kontena.
+However, it could also work with manual scheduling (`docker run`) by specifying the correct
 environment variables or possibly other scheduling systems that use similar conventions.
-
-## [Tags](https://hub.docker.com/r/colinmollenhour/mariadb-galera-swarm/tags)
-
-It is recommended to test all upgrades carefully! The `latest` tag should not be used for production!
-
-Several version are supported and rebuilt and tagged occasionally with both a version number and date built
-so just use the latest build for your major version that suits you or build your own version. Be sure to test
-replication functionality when building new versions using the `test.sh` script!
 
 ## How It Works
 
@@ -28,11 +16,22 @@ endpoints for varying degress of healthiness to aid with integration of load bal
 
 ### Examples
 
-- [Kubernetes](https://github.com/colinmollenhour/mariadb-galera-swarm/tree/master/examples/kubernetes)
-- [Docker Swarm](https://github.com/colinmollenhour/mariadb-galera-swarm/blob/master/examples/swarm)
-- [Kontena Classic](https://github.com/colinmollenhour/mariadb-galera-swarm/blob/master/examples/kontena)
+#### Docker 1.12 Swarm Mode (cli)
 
-Please submit more examples for Mesos, etc. and also improvements for existing examples!
+```
+ $ docker service create --name galera-seed --replicas 1 -e XTRABACKUP_PASSWORD=<pass> \
+     colinmollenhour/mariadb-galera-swarm seed
+ $ docker service create --name galera --replicas 2 -e XTRABACKUP_PASSWORD=<pass> \
+     colinmollenhour/mariadb-galera-swarm node tasks.galera-seed,tasks.galera
+ $ docker service rm galera-seed
+ $ docker service scale galera=3
+```
+
+#### [Docker 1.13 Swarm Mode (stack)](https://github.com/colinmollenhour/mariadb-galera-swarm/blob/master/examples/swarm)
+
+#### [Kontena](https://github.com/colinmollenhour/mariadb-galera-swarm/blob/master/examples/kontena)
+
+Please submit more examples for Kubernetes, Mesos, etc. and also improvements for existing examples!
 
 ## Commands
 
@@ -56,23 +55,6 @@ file in the data volume before boot name `/var/lib/mysql/new-cluster`.
 Start server with Galera disabled. Useful for maintenance tasks like performing `mysql_upgrade`
 and resetting root credentials.
 
-#### Reset root password
-
-For example, to reset the root user password, with the Galera container stopped you can run a new temporary
-container like so:
-
-```
-shell1 $ docker run --rm -v {volume-name}:/var/lib/mysql --name no-galera-temp {image} no-galera --skip-grant-tables
-shell2 $ docker exec -it no-galera-temp mysql -u root mysql
-MariaDB> update user set password=password("YOUR_NEW_PASSWORD") where user='root' and host='127.0.0.1';
-MariaDB> flush privileges;
-MariaDB> quit
-shell2 $ exit
-shell1 $ <CTRL+C>
-```
-
-And now start your Galera container back up with the new root password.
-
 ### sleep
 
 Start the container but not the server. Runs "sleep infinity". Useful just to get volumes
@@ -93,7 +75,7 @@ with any system with DNS-based service discovery such as Kontena, Docker Swarm M
    during the boot phase (waiting for DNS to resolve and recovering wsrep position).
  - `SKIP_TZINFO` (optional) - Specify any value to skip loading of timezone table data when initing a new directory.
  - `DEFAULT_TIME_ZONE` (optional - defaults to the `TZ` envvar or to '+00:00' if undefined) - Specify the database's time zone, either in numeric format (+01:00) or in verbal format (CET, Europe/Bratislava, etc.). The latter one is possible only if you haven't specified `SKIP_TZINFO`. More information about why you would need this is [here](https://mariadb.com/kb/en/library/time-zones/).
- - `SST_METHOD` (optional - defaults to 'mariabackup' for 10.2+ and 'xtrabackup-v2' for 10.1)  May also be set to 'rsync' or 'mysqldump'.  Other methods requiring further configuration or installed dependencies are not available in this image.
+ - `SST_METHOD` (optional - defaults to 'xtrabackup-v2')  May be set to 'rsync' or 'mysqldump'.  Other methods requiring further configuration or installed dependencies are not available in this image.
  - `SKIP_UPGRADES` (optional - prevent running `run-upgrades.sh` script)
 
 Additional variables for "seed":

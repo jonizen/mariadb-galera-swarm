@@ -175,10 +175,6 @@ else
 		echo "${LOG_MESSAGE} Collecting grastate.dat and gvwstate.dat info from other nodes..."
 		set -m
 		tmpfile=$(mktemp -t socat.XXXX)
-		echo "seqno:$NODE_ADDRESS:$POSITION:$SAFE_TO_BOOTSTRAP" > $tmpfile
-		if [[ -n $VIEW_ID ]]; then
-			echo "view:$NODE_ADDRESS:$VIEW_ID" >> $tmpfile
-		fi
 		socat -u TCP-LISTEN:$LISTEN_PORT,bind=$NODE_ADDRESS,fork OPEN:$tmpfile,append &
 		PID_SERVER=$!
 
@@ -194,17 +190,17 @@ else
 			fi
 			for node in ${GCOMM//,/ }; do
 				[[ $node = $NODE_ADDRESS ]] && continue
-				sort -u $tmpfile | socat - TCP:$node:$LISTEN_PORT > /dev/null
-				if [ "$?" = 0 ]; then
+				if socat - TCP:$node:$LISTEN_PORT <<< "seqno:$NODE_ADDRESS:$POSITION:$SAFE_TO_BOOTSTRAP" > /dev/null; then
 					SENT_NODES="$SENT_NODES,$node"
 				fi
+				if [[ -n $VIEW_ID ]]; then
+					socat - TCP:$node:$LISTEN_PORT <<< "view:$NODE_ADDRESS:$VIEW_ID"
+				fi
 			done
-			if   [[ $(<$tmpfile grep -vF :$NODE_ADDRESS: | awk -F: '/^seqno:/{print $2}' | sort -u | wc -w) -ge $EXPECT_NODES ]] \
-			  && [[ $(<<<$SENT_NODES tr ',' '\n' | sort -u | wc -w) -ge $EXPECT_NODES ]]
+			if   [[ $EXPECT_NODES -eq $(<$tmpfile awk -F: '/^seqno:/{print $2}' | sort -u | wc -w) ]] \
+			  && [[ $EXPECT_NODES -eq $(<<<$SENT_NODES tr ',' '\n' | sort -u | wc -w) ]]
 			then
 				echo "${LOG_MESSAGE} Completed communication with $EXPECT_NODES other nodes."
-				# Wait for any nodes that may still want to send to me
-				sleep 11
 				break
 			fi
 
@@ -218,7 +214,7 @@ else
 
 			# Merge in any nodes we have received data from so that we will also send data to them
 			if [[ -s $tmpfile ]]; then
-				_GCOMM="$GCOMM,$(<$tmpfile grep -vF :$NODE_ADDRESS: | awk -F: '/^seqno:/{print $2}' | sort -u | paste -sd ',')"
+				_GCOMM="$GCOMM,$(<$tmpfile awk -F: '/^seqno:/{print $2}' | sort -u | paste -sd ',')"
 				GCOMM=$(<<<"${_GCOMM%%,}" sed 's/,\+/,/g' | tr ',' '\n' | sort -u | paste -sd ',')
 				OPT=$(<<<"$OPT" sed -E "s#gcomm://[0-9\\.,]+#gcomm://$GCOMM#")
 			fi
@@ -261,6 +257,7 @@ else
 			then
 				LOCAL_MEMBERS=$(grep '^member:' /var/lib/mysql/gvwstate.dat | wc -l)
 				TOTAL_MEMBERS=$(grep '^view:' $tmpfile | sort -u | wc -l)
+				TOTAL_MEMBERS=$((TOTAL_MEMBERS + 1)) # Add 1 for self
 				echo "${LOG_MESSAGE} Cluster has consistent view, checking presence of all $LOCAL_MEMBERS members..."
 				if [[ $LOCAL_MEMBERS -eq $TOTAL_MEMBERS ]]; then
 					# Entire cluster was shut down and restarted at once, will restore old Primary Component
@@ -288,6 +285,9 @@ else
 		then
 			# Prefer to choose node using safe_to_bootstrap flag
 			SAFE_NODES=($(<$tmpfile awk -F: '/^seqno:/{ if ($5=="1") print $2}' | sort -u))
+			if [[ $SAFE_TO_BOOTSTRAP -eq 1 ]]; then
+				SAFE_NODES+=($NODE_ADDRESS)
+			fi
 			case ${#SAFE_NODES[@]} in
 				0)
 					echo "${LOG_MESSAGE} No nodes are safe_to_bootstrap. Falling back to uuid/seqno method."
@@ -312,7 +312,7 @@ else
 		then
 			# Otherwise we will start a new Primary Component with the best node by position
 			MY_SEQNO=${POSITION#*:}
-			BEST_SEQNO=$(<$tmpfile grep -v :$NODE_ADDRESS: | awk -F: '/^seqno:/{print $4}' | sort -nu | tail -n 1)
+			BEST_SEQNO=$(<$tmpfile awk -F: '/^seqno:/{print $4}' | sort -nu | tail -n 1)
 			echo "${LOG_MESSAGE} Comparing my seqno ($MY_SEQNO) to the best other node seqno ($BEST_SEQNO)..."
 			if [ "$MY_SEQNO" -gt "$BEST_SEQNO" ]; then
 				# This node is newer than all the others, start a new cluster
@@ -326,7 +326,7 @@ else
 			else
 				# This and another node or nodes are the newest, lowest IP wins
 				LOWEST_IP=$(<$tmpfile awk -F: "/^seqno:/{ if (\$4==\"$BEST_SEQNO\") print \$2 }" | sort -u | head -n 1)
-				if [ "$NODE_ADDRESS" = "$LOWEST_IP" ]; then
+				if [ "$NODE_ADDRESS" \< "$LOWEST_IP" ]; then
 					echo "${LOG_MESSAGE} This node is equal to the most advanced and has the lowest IP. Starting a new cluster..."
 					prepare_bootstrap
 				else
@@ -355,5 +355,5 @@ fi
 # Start mysqld
 echo "${LOG_MESSAGE} ---------------------------------------------------------------"
 echo "${LOG_MESSAGE} Starting with options: $OPT $START"
-exec mysqld $OPT $START
+exec mysqld $OPT $START --bind-address=0.0.0.0
 

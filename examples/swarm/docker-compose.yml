@@ -27,11 +27,12 @@ services:
       - HEALTHY_WHILE_BOOTING=1
     networks:
       - galera_network
-    command: node tasks.seed,tasks.node
+    command: node seed,node
     volumes:
       - mysql-data:/var/lib/mysql
     deploy:
       replicas: 0
+      endpoint_mode: dnsrr
     secrets:
       - xtrabackup_password
 

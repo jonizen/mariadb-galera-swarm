@@ -133,13 +133,13 @@ fi
 echo "...------======------... MariaDB Galera Start Script ...------======------..."
 echo "Got NODE_ADDRESS=$NODE_ADDRESS"
 
-MYSQL_MODE_ARGS=""
-
 # Allow for easily adding more startup scripts
 export NODE_ADDRESS
 if [ -f /usr/local/lib/startup.sh ]; then
 	source /usr/local/lib/startup.sh "$@"
 fi
+
+MYSQL_MODE_ARGS=""
 
 #
 # Read optional secrets from files
@@ -213,7 +213,7 @@ then
 		MYSQL_DATABASE=$(cat $MYSQL_DATABASE_FILE)
 	fi
 	if [ -z "$MYSQL_ROOT_PASSWORD" ]; then
-		MYSQL_ROOT_PASSWORD=$(head -c 32 /dev/urandom | base64 | head -c 32)
+		MYSQL_ROOT_PASSWORD=$(openssl rand -base64 32)
 		echo "MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD"
 	fi
 	if [ -z "$MYSQL_ROOT_HOST" ]; then
@@ -323,29 +323,14 @@ case $START_MODE in
 					GCOMM+="$SEP$ADDR"
 				else
 					RESOLVE=1
-					if [[ $ADDR =~ "_" ]]; then
-						if [ ! -n $LOG_OUT_HOSTNAMES ]; then
-							LOG_OUT_HOSTNAMES=1
-							echo "Underscore in container name detected - trying predictable hostnames"
-						fi
-						IPS=""
-						for TASK_ID in {1..10}; do
-							HOSTNAME="$ADDR.$TASK_ID"
-							GCOMM+="$SEP$(getent hosts "$HOSTNAME" | awk '{ print $1 }' | paste -sd ","),"
-						done
-					else
-						GCOMM+="$SEP$(getent hosts "$ADDR" | awk '{ print $1 }' | paste -sd ",")"
-					fi
+					GCOMM+="$SEP$(getent hosts "$ADDR" | awk '{ print $1 }' | paste -sd ",")"
 				fi
 				if [ -n "$GCOMM" ]; then
 					SEP=,
 				fi
 			done
-			GCOMM=$(echo "$GCOMM" | sed 's/[, ]\+/,/g') # strip duplicate commas and whitespace
-			GCOMM=${GCOMM#,} # strip leading commas
-			GCOMM=${GCOMM%,} # strip trailing commas
-
-			echo "Found Servers: $GCOMM"
+			GCOMM=${GCOMM%%,}                        # strip trailing commas
+			GCOMM=$(echo "$GCOMM" | sed 's/,\+/,/g') # strip duplicate commas
 
 			# Allow user to bypass waiting for other IPs
 			if [[ -f /var/lib/mysql/skip-gcomm-wait ]]; then
@@ -396,7 +381,7 @@ rm -rf $(dirname $fifo) \
   && mkfifo $fifo \
   && chmod o+rw $fifo \
   && echo "Tailing $fifo..." \
-  && tail -f $fifo &
+  && tail -F $fifo &
 tail_pid=$!
 
 # Port 8080 only reports healthy when ready to serve clients
@@ -438,4 +423,5 @@ test -s /var/run/galera-healthcheck-1.pid && kill $(cat /var/run/galera-healthch
 test -s /var/run/galera-healthcheck-2.pid && kill $(cat /var/run/galera-healthcheck-2.pid)
 
 echo "Goodbye"
+cat /var/log/mysql/error.log
 exit $RC
