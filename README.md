@@ -1,6 +1,8 @@
 # MariaDb Galera Cluster
 
 ## This is a fork for ARM64 images with working builds and images att docker hub
+This is work to make this work on ubuntu server 20 version with arm64 and i am currently running this on my raspberry pi cluster with 7 nodes.
+
 
 This Docker container is based on the official Docker [mariadb](https://hub.docker.com/_/mariadb/) image and is designed to be
 compatible with auto-scheduling systems, specifically Kubernetes, Docker Swarm Mode and Kontena Classic.
