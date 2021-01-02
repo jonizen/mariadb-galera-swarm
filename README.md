@@ -1,5 +1,7 @@
 # MariaDb Galera Cluster
 
+## This is a fork for ARM64 images with working builds and images att docker hub
+
 This Docker container is based on the official Docker [mariadb](https://hub.docker.com/_/mariadb/) image and is designed to be
 compatible with auto-scheduling systems, specifically Kubernetes, Docker Swarm Mode and Kontena Classic.
 It could also work with manual scheduling (`docker run`) by specifying the correct
